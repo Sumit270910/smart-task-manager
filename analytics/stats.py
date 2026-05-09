@@ -14,10 +14,8 @@ def get_analytics(user_id):
             'completion_percentage': 0.0
         }
 
-    # Convert to Pandas DataFrame
     df = pd.DataFrame([t.to_dict() for t in tasks])
 
-    # Use NumPy for calculations
     total = len(df)
     completed = int(np.sum(df['status'] == 'completed'))
     pending = int(np.sum(df['status'] == 'pending'))

@@ -17,8 +17,6 @@ socketio = SocketIO(app)
 
 login_manager.login_view = 'login'
 
-# ─── MODELS ───────────────────────────────────────────
-
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -52,8 +50,6 @@ class Task(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ─── ANALYTICS ────────────────────────────────────────
-
 def get_analytics(user_id):
     user_tasks = Task.query.filter_by(user_id=user_id).all()
     if not user_tasks:
@@ -65,8 +61,6 @@ def get_analytics(user_id):
     in_progress = int(np.sum(df['status'] == 'in_progress'))
     completion_pct = round(float(completed / total * 100), 2)
     return {'total': total, 'completed': completed, 'pending': pending, 'in_progress': in_progress, 'completion_percentage': completion_pct}
-
-# ─── AUTH ROUTES ──────────────────────────────────────
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -103,8 +97,6 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
-# ─── TASK ROUTES ──────────────────────────────────────
 
 @app.route('/')
 @login_required
@@ -157,17 +149,13 @@ def delete_task(task_id):
     socketio.emit('task_update', {'action': 'deleted', 'task_id': task_id})
     return jsonify({'message': 'Task deleted'})
 
-# ─── WEBSOCKET EVENTS ─────────────────────────────────
-
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
+    pass
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
-
-# ─── RUN ──────────────────────────────────────────────
+    pass
 
 with app.app_context():
     db.create_all()

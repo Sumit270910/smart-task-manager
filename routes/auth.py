@@ -11,8 +11,7 @@ def register():
         username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
+        if User.query.filter_by(email=email).first():
             flash('Email already registered!', 'danger')
             return redirect(url_for('auth.register'))
         hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
