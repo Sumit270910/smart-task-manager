@@ -152,8 +152,12 @@
         }
 
         function updateStatus(taskId, currentStatus) {
+            if (currentStatus === 'completed') {
+            alert('Task is already completed!');
+            return;
+            }
             const statuses = ['pending', 'in_progress', 'completed'];
-            const nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % statuses.length];
+            const nextStatus = statuses[statuses.indexOf(currentStatus) + 1];
 
             fetch('/api/tasks/' + taskId, {
                 method: 'PUT',
