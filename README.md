@@ -115,3 +115,11 @@ smart_task_manager/
 └── static/
     └── style.css
 ```
+
+ ## DEMO VIDEO LINK
+https://github.com/user-attachments/assets/39a38c52-a7f1-483d-a2ff-1a9a33de3e91
+
+
+
+
+
