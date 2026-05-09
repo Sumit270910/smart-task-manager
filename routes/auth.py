@@ -5,14 +5,30 @@ from models.user import User
 
 auth = Blueprint('auth', __name__)
 
+def validate_register(username, email, password):
+    if not username or len(username) < 3:
+        return 'Username must be at least 3 characters!'
+    if not email or '@' not in email:
+        return 'Please enter a valid email!'
+    if not password or len(password) < 6:
+        return 'Password must be at least 6 characters!'
+    return None
+
 @auth.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        error = validate_register(username, email, password)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('auth.register'))
         if User.query.filter_by(email=email).first():
             flash('Email already registered!', 'danger')
+            return redirect(url_for('auth.register'))
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken!', 'danger')
             return redirect(url_for('auth.register'))
         hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
         user = User(username=username, email=email, password=hashed_pw)
@@ -25,8 +41,11 @@ def register():
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        if not email or not password:
+            flash('Please fill in all fields!', 'danger')
+            return redirect(url_for('auth.login'))
         user = User.query.filter_by(email=email).first()
         if user and bcrypt.check_password_hash(user.password, password):
             login_user(user)

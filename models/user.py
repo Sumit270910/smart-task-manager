@@ -1,5 +1,5 @@
 from flask_login import UserMixin
-from app import db
+from app import db, login_manager
 
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
@@ -9,3 +9,10 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     tasks = db.relationship('Task', backref='owner', lazy=True)
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))

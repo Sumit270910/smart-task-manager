@@ -9,13 +9,15 @@ import numpy as np
 
 app = Flask(__name__)
 app.config.from_object(Config)
-
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 socketio = SocketIO(app)
-
 login_manager.login_view = 'login'
+
+VALID_PRIORITIES = ['low', 'medium', 'high']
+VALID_STATUSES = ['pending', 'in_progress', 'completed']
+
 
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
@@ -25,6 +27,10 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     tasks = db.relationship('Task', backref='owner', lazy=True)
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
 
 class Task(db.Model):
     __tablename__ = 'tasks'
@@ -46,9 +52,36 @@ class Task(db.Model):
             'created_at': str(self.created_at)
         }
 
+    def __repr__(self):
+        return f'<Task {self.title}>'
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+def validate_register(username, email, password):
+    if not username or len(username) < 3:
+        return 'Username must be at least 3 characters!'
+    if not email or '@' not in email:
+        return 'Please enter a valid email!'
+    if not password or len(password) < 6:
+        return 'Password must be at least 6 characters!'
+    return None
+
+
+def validate_task(data):
+    if not data.get('title') or len(data['title'].strip()) == 0:
+        return 'Task title is required!'
+    if len(data['title']) > 200:
+        return 'Title must be under 200 characters!'
+    if data.get('priority') and data['priority'] not in VALID_PRIORITIES:
+        return 'Invalid priority value!'
+    if data.get('status') and data['status'] not in VALID_STATUSES:
+        return 'Invalid status value!'
+    return None
+
 
 def get_analytics(user_id):
     user_tasks = Task.query.filter_by(user_id=user_id).all()
@@ -62,14 +95,22 @@ def get_analytics(user_id):
     completion_pct = round(float(completed / total * 100), 2)
     return {'total': total, 'completed': completed, 'pending': pending, 'in_progress': in_progress, 'completion_percentage': completion_pct}
 
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        error = validate_register(username, email, password)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('register'))
         if User.query.filter_by(email=email).first():
             flash('Email already registered!', 'danger')
+            return redirect(url_for('register'))
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken!', 'danger')
             return redirect(url_for('register'))
         hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
         user = User(username=username, email=email, password=hashed_pw)
@@ -79,11 +120,15 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html')
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        if not email or not password:
+            flash('Please fill in all fields!', 'danger')
+            return redirect(url_for('login'))
         user = User.query.filter_by(email=email).first()
         if user and bcrypt.check_password_hash(user.password, password):
             login_user(user)
@@ -92,11 +137,13 @@ def login():
         return redirect(url_for('login'))
     return render_template('login.html')
 
+
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
 
 @app.route('/')
 @login_required
@@ -105,19 +152,26 @@ def get_tasks_page():
     analytics = get_analytics(current_user.id)
     return render_template('index.html', tasks=all_tasks, analytics=analytics)
 
+
 @app.route('/api/tasks', methods=['GET'])
 @login_required
 def get_tasks():
     all_tasks = Task.query.filter_by(user_id=current_user.id).all()
     return jsonify([t.to_dict() for t in all_tasks])
 
+
 @app.route('/api/tasks', methods=['POST'])
 @login_required
 def add_task():
     data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided!'}), 400
+    error = validate_task(data)
+    if error:
+        return jsonify({'error': error}), 400
     task = Task(
-        title=data['title'],
-        description=data.get('description', ''),
+        title=data['title'].strip(),
+        description=data.get('description', '').strip(),
         priority=data.get('priority', 'medium'),
         status=data.get('status', 'pending'),
         user_id=current_user.id
@@ -127,12 +181,20 @@ def add_task():
     socketio.emit('task_update', {'action': 'added', 'task': task.to_dict()})
     return jsonify(task.to_dict()), 201
 
+
 @app.route('/api/tasks/<int:task_id>', methods=['PUT'])
 @login_required
 def update_task(task_id):
-    task = Task.query.get_or_404(task_id)
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
+        return jsonify({'error': 'Task not found!'}), 404
     data = request.json
-    task.title = data.get('title', task.title)
+    if not data:
+        return jsonify({'error': 'No data provided!'}), 400
+    error = validate_task({**task.to_dict(), **data})
+    if error:
+        return jsonify({'error': error}), 400
+    task.title = data.get('title', task.title).strip()
     task.description = data.get('description', task.description)
     task.priority = data.get('priority', task.priority)
     task.status = data.get('status', task.status)
@@ -140,22 +202,43 @@ def update_task(task_id):
     socketio.emit('task_update', {'action': 'updated', 'task': task.to_dict()})
     return jsonify(task.to_dict())
 
+
 @app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 @login_required
 def delete_task(task_id):
-    task = Task.query.get_or_404(task_id)
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
+        return jsonify({'error': 'Task not found!'}), 404
     db.session.delete(task)
     db.session.commit()
     socketio.emit('task_update', {'action': 'deleted', 'task_id': task_id})
-    return jsonify({'message': 'Task deleted'})
+    return jsonify({'message': 'Task deleted successfully!'})
+
 
 @socketio.on('connect')
 def handle_connect():
-    pass
+    from flask_socketio import emit
+    emit('connected', {'message': 'WebSocket connected!'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    pass
+    print('Client disconnected')
+
+@socketio.on('task_added')
+def handle_task_added(data):
+    from flask_socketio import emit
+    emit('task_update', {'action': 'added', 'task': data}, broadcast=True)
+
+@socketio.on('task_updated')
+def handle_task_updated(data):
+    from flask_socketio import emit
+    emit('task_update', {'action': 'updated', 'task': data}, broadcast=True)
+
+@socketio.on('task_deleted')
+def handle_task_deleted(data):
+    from flask_socketio import emit
+    emit('task_update', {'action': 'deleted', 'task_id': data}, broadcast=True)
+
 
 with app.app_context():
     db.create_all()

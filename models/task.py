@@ -19,3 +19,6 @@ class Task(db.Model):
             'status': self.status,
             'created_at': str(self.created_at)
         }
+
+    def __repr__(self):
+        return f'<Task {self.title}>'
