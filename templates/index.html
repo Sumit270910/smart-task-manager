@@ -99,16 +99,28 @@
     </div>
 
     <script>
-        const socket = io();
+        let socket;
+        try {
+            socket = io({
+                reconnectionAttempts: 2,
+                timeout: 3000
+            });
 
-        socket.on('connected', function(data) {
-            console.log('WebSocket connected!');
-        });
+            socket.on('connected', function(data) {
+                console.log('WebSocket connected!');
+            });
 
-        socket.on('task_update', function(data) {
-            showNotification('Task ' + data.action + ' successfully!');
-            setTimeout(() => location.reload(), 1000);
-        });
+            socket.on('task_update', function(data) {
+                showNotification('Task ' + data.action + ' successfully!');
+                setTimeout(() => location.reload(), 1000);
+            });
+
+            socket.on('connect_error', function() {
+                if (socket) socket.disconnect();
+            });
+        } catch (e) {
+            console.log('Socket initialization bypassed:', e);
+        }
 
         function showNotification(message) {
             const notif = document.getElementById('notification');

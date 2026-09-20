@@ -1,13 +1,25 @@
+import os
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO
 from config import Config
-import pandas as pd
-import numpy as np
+try:
+    import pandas as pd
+    import numpy as np
+except ImportError:
+    pd = None
+    np = None
 
-app = Flask(__name__)
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, 'templates'),
+    static_folder=os.path.join(BASE_DIR, 'static')
+)
 app.config.from_object(Config)
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -87,13 +99,19 @@ def get_analytics(user_id):
     user_tasks = Task.query.filter_by(user_id=user_id).all()
     if not user_tasks:
         return {'total': 0, 'completed': 0, 'pending': 0, 'in_progress': 0, 'completion_percentage': 0.0}
-    df = pd.DataFrame([t.to_dict() for t in user_tasks])
-    total = len(df)
-    completed = int(np.sum(df['status'] == 'completed'))
-    pending = int(np.sum(df['status'] == 'pending'))
-    in_progress = int(np.sum(df['status'] == 'in_progress'))
-    completion_pct = round(float(completed / total * 100), 2)
-    return {'total': total, 'completed': completed, 'pending': pending, 'in_progress': in_progress, 'completion_percentage': completion_pct}
+    total = len(user_tasks)
+    completed = sum(1 for t in user_tasks if t.status == 'completed')
+    pending = sum(1 for t in user_tasks if t.status == 'pending')
+    in_progress = sum(1 for t in user_tasks if t.status == 'in_progress')
+    completion_pct = round(float(completed / total * 100), 2) if total > 0 else 0.0
+    return {
+        'total': total,
+        'completed': completed,
+        'pending': pending,
+        'in_progress': in_progress,
+        'completion_percentage': completion_pct
+    }
+
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -241,7 +259,11 @@ def handle_task_deleted(data):
 
 
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        print(f"Warning: Database initialization failed: {e}")
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)

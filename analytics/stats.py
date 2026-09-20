@@ -1,5 +1,9 @@
-import pandas as pd
-import numpy as np
+try:
+    import pandas as pd
+    import numpy as np
+except ImportError:
+    pd = None
+    np = None
 
 def get_analytics(user_id):
     from models.task import Task
@@ -12,16 +16,15 @@ def get_analytics(user_id):
             'in_progress': 0,
             'completion_percentage': 0.0
         }
-    df = pd.DataFrame([t.to_dict() for t in user_tasks])
-    total = len(df)
-    completed = int(np.sum(df['status'] == 'completed'))
-    pending = int(np.sum(df['status'] == 'pending'))
-    in_progress = int(np.sum(df['status'] == 'in_progress'))
-    completion_pct = round(float(completed / total * 100), 2)
+    total = len(user_tasks)
+    completed = sum(1 for t in user_tasks if t.status == 'completed')
+    pending = sum(1 for t in user_tasks if t.status == 'pending')
+    in_progress = sum(1 for t in user_tasks if t.status == 'in_progress')
+    completion_pct = round(float(completed / total * 100), 2) if total > 0 else 0.0
     return {
         'total': total,
         'completed': completed,
         'pending': pending,
         'in_progress': in_progress,
         'completion_percentage': completion_pct
-    }
+    }
